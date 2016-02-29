@@ -9,8 +9,6 @@ export default Ember.Component.extend({
   classNameBindings: ['toggled:x-toggle-container-checked', 'disabled:x-toggle-container-disabled'],
   classNames: ['x-toggle-container'],
   disabled: false,
-  value: false,
-  toggled: false,
   name: 'default',
 
   onLabelValue: computed('onLabel', function () {
@@ -37,57 +35,48 @@ export default Ember.Component.extend({
     return this.get('elementId') + '-x-toggle';
   }),
 
-  wasToggled: on('init', observer('toggled', function () {
-    var toggled = this.get('toggled');
-    var offIndex = this.get('offLabel').indexOf(':');
-    var onIndex = this.get('onLabel').indexOf(':');
-    var offState = offIndex > -1 ? this.get('offLabel').substr(offIndex + 1) : false;
-    var onState = onIndex > -1 ? this.get('onLabel').substr(onIndex + 1) : true;
+  // rawToggled is two-way bound to the DOM checkbox
+  rawToggled: false,
 
-    this.sendAction('toggle', toggled, this.get('name'));
-
-    if (toggled === false) {
-      this.set('value', offState);
-    } else {
-      this.set('value', onState);
+  // toggled is the value that comes down to us. We don't ever write
+  // it from within this component.
+  toggled: Ember.computed({
+    get() {},
+    set(key, value) {
+      var onIndex = this.get('onLabel').indexOf(':');
+      var onState = onIndex > -1 ? this.get('onLabel').substr(onIndex + 1) : true;
+      this._shush = true;
+      this.set('rawToggled', onState === value);
+      this._shush = false;
+      return value;
     }
-  })),
+  }),
 
-  valueObserver: on('init', observer('value', function() {
+  // This will fire both due to user click and due to our own `set` in
+  // upstreamChanged. But we guard against looping during our own `set`.
+  userChanged: observer('rawToggled', function() {
+    if (this._shush) { return; }
+
     var debounce = this.get('debounce');
-
     if (!debounce) {
       debounce = run.debounce(this, function () {
-        var value = this.get('value');
         var offIndex = this.get('offLabel').indexOf(':');
         var onIndex = this.get('onLabel').indexOf(':');
         var offState = offIndex > -1 ? this.get('offLabel').substr(offIndex + 1) : false;
         var onState = onIndex > -1 ? this.get('onLabel').substr(onIndex + 1) : true;
 
-        if (value === onState) {
-          this.set('toggled', true);
-        } else {
-          this.set('toggled', false);
-          this.set('value', offState);
-        }
-
+        this.sendAction('on-toggle', this.get('rawToggled') ? onState : offState);
         this.set('debounce', null);
       }, 500);
-
       this.set('debounce', debounce);
     }
-  })),
+  }),
 
   clearDebounce: on('willDestroyElement', function () {
     var debounce = this.get('debounce');
-
     if (debounce) {
       run.cancel(debounce);
       this.set('debounce', null);
     }
-  }),
-
-  click(event) {
-    event.stopPropagation();
-  }
+  })
 });
